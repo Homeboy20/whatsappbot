@@ -61,159 +61,160 @@ if (file_exists(plugin_dir_path(__FILE__) . 'includes/kwetu-debug.php')) {
 define('KWETUPIZZA_DB_VERSION', '1.1');
 
 /**
- * Create or update the custom database tables upon plugin activation.
- */
-/**
- * Create or update the custom database tables upon plugin activation.
- */
-/**
- * Create or update the custom database tables upon plugin activation.
- */
-/**
- * Create or update the custom database tables upon plugin activation.
+ * Create all required database tables
  */
 function kwetupizza_create_tables() {
     global $wpdb;
     $charset_collate = $wpdb->get_charset_collate();
-
-    // Include the dbDelta function
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
-    // Define table names
-    $users_table        = $wpdb->prefix . 'kwetupizza_users';
-    $products_table     = $wpdb->prefix . 'kwetupizza_products';
-    $orders_table       = $wpdb->prefix . 'kwetupizza_orders';
-    $order_items_table  = $wpdb->prefix . 'kwetupizza_order_items';
-    $transactions_table = $wpdb->prefix . 'kwetupizza_transactions';
-    $addresses_table    = $wpdb->prefix . 'kwetupizza_addresses';
-    $order_tracking_table = $wpdb->prefix . 'kwetupizza_order_tracking';
-
-    // SQL for creating tables
-    $sql_users = "CREATE TABLE {$users_table} (
-        id MEDIUMINT(9) NOT NULL AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(100) NOT NULL,
-        phone VARCHAR(20) NOT NULL,
-        role VARCHAR(20) NOT NULL,
-        state VARCHAR(255) DEFAULT 'greeting' NOT NULL,
-        preferences TEXT,
-        last_order_date DATETIME,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY phone (phone),
-        PRIMARY KEY (id)
+    // Products table
+    $table_name = $wpdb->prefix . 'kwetupizza_products';
+    $sql = "CREATE TABLE $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        product_name varchar(100) NOT NULL,
+        description text,
+        price decimal(10,2) NOT NULL,
+        image_url text,
+        category varchar(50) NOT NULL,
+        is_available tinyint(1) DEFAULT 1,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY  (id)
     ) $charset_collate;";
+    dbDelta($sql);
 
-    $sql_products = "CREATE TABLE {$products_table} (
-        id MEDIUMINT(9) UNSIGNED NOT NULL AUTO_INCREMENT,
-        product_name VARCHAR(255) NOT NULL,
-        description TEXT NOT NULL,
-        price FLOAT NOT NULL,
-        currency VARCHAR(10) NOT NULL,
-        category VARCHAR(50) NOT NULL,
-        image_url VARCHAR(255) DEFAULT '',
-        is_available TINYINT(1) DEFAULT 1,
-        preparation_time INT DEFAULT 30,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id)
+    // Orders table
+    $table_name = $wpdb->prefix . 'kwetupizza_orders';
+    $sql = "CREATE TABLE $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        customer_name varchar(100) NOT NULL,
+        customer_phone varchar(20) NOT NULL,
+        customer_email varchar(100),
+        delivery_address text,
+        total decimal(10,2) NOT NULL,
+        status varchar(20) NOT NULL DEFAULT 'pending',
+        payment_status varchar(20) NOT NULL DEFAULT 'pending',
+        payment_method varchar(50),
+        tx_ref varchar(50),
+        order_date datetime DEFAULT CURRENT_TIMESTAMP,
+        payment_date datetime,
+        delivery_date datetime,
+        notes text,
+        PRIMARY KEY  (id)
     ) $charset_collate;";
+    dbDelta($sql);
 
-    $sql_orders = "CREATE TABLE {$orders_table} (
-        id MEDIUMINT(9) UNSIGNED NOT NULL AUTO_INCREMENT,
-        tx_ref VARCHAR(255) DEFAULT NULL,
-        order_date DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        customer_name VARCHAR(100) NOT NULL,
-        customer_email VARCHAR(100) NOT NULL,
-        customer_phone VARCHAR(20) NOT NULL,
-        delivery_address TEXT NOT NULL,
-        delivery_phone VARCHAR(20) NOT NULL,
-        status VARCHAR(50) NOT NULL,
-        total FLOAT NOT NULL,
-        currency VARCHAR(10) NOT NULL,
-        scheduled_time DATETIME DEFAULT NULL,
-        estimated_delivery_time DATETIME,
-        actual_delivery_time DATETIME,
-        delivery_notes TEXT,
-        payment_status VARCHAR(50) DEFAULT 'pending',
-        payment_method VARCHAR(50),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY customer_phone (customer_phone),
-        KEY tx_ref (tx_ref)
-    ) $charset_collate;";
-
-    $sql_order_items = "CREATE TABLE {$order_items_table} (
-        id MEDIUMINT(9) UNSIGNED NOT NULL AUTO_INCREMENT,
-        order_id MEDIUMINT(9) UNSIGNED NOT NULL,
-        product_id MEDIUMINT(9) UNSIGNED NOT NULL,
-        quantity INT NOT NULL,
-        price FLOAT NOT NULL,
-        special_instructions TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY order_id (order_id),
-        KEY product_id (product_id)
-    ) $charset_collate;";
-
-    $sql_transactions = "CREATE TABLE {$transactions_table} (
-        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        order_id MEDIUMINT(9) UNSIGNED NOT NULL,
-        tx_ref VARCHAR(255) NOT NULL,
-        transaction_date DATETIME NOT NULL,
-        payment_method VARCHAR(100) NOT NULL,
-        payment_status VARCHAR(50) NOT NULL,
-        amount DECIMAL(10,2) NOT NULL,
-        currency VARCHAR(10) NOT NULL,
-        payment_provider VARCHAR(50) NOT NULL,
-        provider_reference VARCHAR(255),
-        response_data TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        UNIQUE KEY tx_ref (tx_ref),
+    // Order items table
+    $table_name = $wpdb->prefix . 'kwetupizza_order_items';
+    $sql = "CREATE TABLE $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        order_id mediumint(9) NOT NULL,
+        product_id mediumint(9) NOT NULL,
+        product_name varchar(100) NOT NULL,
+        quantity smallint(5) NOT NULL,
+        price decimal(10,2) NOT NULL,
+        PRIMARY KEY  (id),
         KEY order_id (order_id)
     ) $charset_collate;";
+    dbDelta($sql);
 
-    $sql_addresses = "CREATE TABLE {$addresses_table} (
-        id MEDIUMINT(9) UNSIGNED NOT NULL AUTO_INCREMENT,
-        user_id MEDIUMINT(9) UNSIGNED NOT NULL,
-        address TEXT NOT NULL,
-        phone_number VARCHAR(20) NOT NULL,
-        is_default TINYINT(1) DEFAULT 0,
-        latitude DECIMAL(10,8),
-        longitude DECIMAL(11,8),
-        address_type VARCHAR(50) DEFAULT 'home',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY user_id (user_id)
-    ) $charset_collate;";
-
-    $sql_order_tracking = "CREATE TABLE {$order_tracking_table} (
-        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        order_id MEDIUMINT(9) UNSIGNED NOT NULL,
-        status VARCHAR(50) NOT NULL,
-        description TEXT,
-        location_update TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
+    // Payments table
+    $table_name = $wpdb->prefix . 'kwetupizza_payments';
+    $sql = "CREATE TABLE $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        order_id mediumint(9) NOT NULL,
+        amount decimal(10,2) NOT NULL,
+        payment_method varchar(50) NOT NULL,
+        transaction_id varchar(100),
+        status varchar(20) NOT NULL,
+        payment_date datetime DEFAULT CURRENT_TIMESTAMP,
+        response_data text,
+        PRIMARY KEY  (id),
         KEY order_id (order_id)
     ) $charset_collate;";
+    dbDelta($sql);
 
-    // Execute the SQL to create or update tables
-    dbDelta($sql_users);
-    dbDelta($sql_products);
-    dbDelta($sql_orders);
-    dbDelta($sql_order_items);
-    dbDelta($sql_transactions);
-    dbDelta($sql_addresses);
-    dbDelta($sql_order_tracking);
+    // Users table
+    $table_name = $wpdb->prefix . 'kwetupizza_users';
+    $sql = "CREATE TABLE $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        name varchar(100) NOT NULL,
+        email varchar(100),
+        phone varchar(20) NOT NULL,
+        address text,
+        role varchar(20) DEFAULT 'customer',
+        state varchar(20) DEFAULT 'active',
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        last_login datetime,
+        PRIMARY KEY  (id),
+        UNIQUE KEY phone (phone)
+    ) $charset_collate;";
+    dbDelta($sql);
 
-    // Update the database version option
-    update_option('kwetupizza_db_version', '2.0');
+    // Conversation context table
+    $table_name = $wpdb->prefix . 'kwetupizza_conversation_context';
+    $sql = "CREATE TABLE $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        phone varchar(20) NOT NULL,
+        context longtext NOT NULL,
+        last_activity datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY  (id),
+        UNIQUE KEY phone (phone)
+    ) $charset_collate;";
+    dbDelta($sql);
+    
+    // WhatsApp conversation logs table
+    $whatsapp_logs_table = $wpdb->prefix . 'kwetupizza_whatsapp_logs';
+    $sql = "CREATE TABLE $whatsapp_logs_table (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        phone varchar(20) NOT NULL,
+        message text NOT NULL,
+        direction enum('incoming', 'outgoing') NOT NULL,
+        timestamp datetime NOT NULL,
+        agent_id bigint(20) DEFAULT NULL,
+        PRIMARY KEY  (id),
+        KEY phone (phone),
+        KEY timestamp (timestamp)
+    ) $charset_collate;";
+    dbDelta($sql);
+    
+    // Support tickets table
+    $support_tickets_table = $wpdb->prefix . 'kwetupizza_support_tickets';
+    $sql = "CREATE TABLE $support_tickets_table (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        phone varchar(20) NOT NULL,
+        issue text NOT NULL,
+        status enum('open', 'pending', 'resolved', 'closed') NOT NULL DEFAULT 'open',
+        created_at datetime NOT NULL,
+        resolved_at datetime DEFAULT NULL,
+        agent_id bigint(20) DEFAULT NULL,
+        PRIMARY KEY  (id),
+        KEY phone (phone),
+        KEY status (status),
+        KEY created_at (created_at)
+    ) $charset_collate;";
+    dbDelta($sql);
+    
+    // Notifications table
+    $notifications_table = $wpdb->prefix . 'kwetupizza_notifications';
+    $sql = "CREATE TABLE $notifications_table (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        type varchar(50) NOT NULL,
+        reference_id varchar(50) NOT NULL,
+        message text NOT NULL,
+        created_at datetime NOT NULL,
+        is_read tinyint(1) NOT NULL DEFAULT 0,
+        PRIMARY KEY  (id),
+        KEY type (type),
+        KEY is_read (is_read),
+        KEY created_at (created_at)
+    ) $charset_collate;";
+    dbDelta($sql);
+
+    update_option('kwetupizza_db_version', KWETUPIZZA_DB_VERSION);
 }
+register_activation_hook(__FILE__, 'kwetupizza_create_tables');
 
 // Registration of the activation hook
 function kwetupizza_activate() {

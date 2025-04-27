@@ -149,148 +149,317 @@ if (!function_exists('kwetupizza_handle_whatsapp_verification')) {
 }
 
 /**
- * WhatsApp message handler
- * Processes incoming messages from WhatsApp
+ * Handle WhatsApp messages coming from the webhook
  * 
- * @param WP_REST_Request $request The request object
- * @return WP_REST_Response The response
+ * @param WP_REST_Request $request The webhook request
+ * @return WP_REST_Response The response to send back
  */
-if (!function_exists('kwetupizza_handle_whatsapp_messages')) {
-    function kwetupizza_handle_whatsapp_messages($request) {
-        $body = $request->get_body();
+function kwetupizza_handle_whatsapp_messages($request) {
+    // Get the JSON data
+    $json_data = $request->get_json_params();
+    
+    // Get webhook information and log it
+    if (get_option('kwetupizza_enable_logging', false)) {
+        error_log('WhatsApp Webhook received: ' . json_encode($json_data));
+    }
+    
+    // Save webhook body for debugging
+    update_option('kwetupizza_last_webhook_data', json_encode($json_data));
+    
+    // Process the webhook
+    try {
+        // Store webhook metadata for reuse
+        global $kwetupizza_webhook_metadata;
+        $kwetupizza_webhook_metadata = array();
         
-        // Verify the signature if app secret is configured
-        $signature = $request->get_header('x-hub-signature-256');
-        if (!empty($signature) && !kwetupizza_verify_whatsapp_signature($signature, $body)) {
+        if (isset($json_data['entry'][0]['changes'][0]['value']['metadata'])) {
+            $kwetupizza_webhook_metadata['phone_number_id'] = $json_data['entry'][0]['changes'][0]['value']['metadata']['phone_number_id'];
+        }
+        
+        // Check if this is a message or status update
+        if (isset($json_data['entry'][0]['changes'][0]['value']['messages'])) {
+            // This is a message update
+            $message = $json_data['entry'][0]['changes'][0]['value']['messages'][0];
+            $from = $message['from'];
+            $message_id = $message['id'];
+            
+            // Process the message based on type
+            kwetupizza_process_whatsapp_webhook($json_data);
+        } 
+        elseif (isset($json_data['entry'][0]['changes'][0]['value']['statuses'])) {
+            // This is a status update, process it
+            $status = $json_data['entry'][0]['changes'][0]['value']['statuses'][0];
+            $status_id = $status['id'];
+            $recipient_id = $status['recipient_id'];
+            $status_type = $status['status'];
+            
+            // Log the status update
             if (get_option('kwetupizza_enable_logging', false)) {
-                error_log('WhatsApp webhook: Signature verification failed');
+                error_log("WhatsApp Status Update: ID: $status_id, To: $recipient_id, Status: $status_type");
             }
-            return new WP_REST_Response('Invalid signature', 403);
-        }
-
-        // Parse request data
-        $webhook_data = json_decode($body, true);
-
-        // Log the request data for debugging
-        if (get_option('kwetupizza_enable_logging', false)) {
-            error_log('WhatsApp webhook payload received: ' . print_r($webhook_data, true));
+            
+            // Fire status update action for other plugins to hook into
+            do_action('kwetupizza_whatsapp_status_update', $status);
         }
         
-        // Always acknowledge receipt to prevent retries
-        if (empty($webhook_data) || !is_array($webhook_data)) {
-            return new WP_REST_Response('Received', 200);
-        }
-        
-        // Process immediately for better response time
-        if (isset($webhook_data['entry'][0]['changes'][0]['value']['messages'])) {
-            // Process synchronously for actual messages
-            kwetupizza_process_whatsapp_webhook($webhook_data);
-        } else {
-            // Use WordPress scheduling for status updates or other non-message events
-            wp_schedule_single_event(time(), 'kwetupizza_process_whatsapp_webhook', array($webhook_data));
-        }
-        
-        // Return success response immediately
-        return new WP_REST_Response('Received', 200);
+        // If the message or status was processed successfully, return success
+        return new WP_REST_Response(['success' => true], 200);
+    } catch (Exception $e) {
+        // Log the error and return a 500 status code
+        error_log('Error processing WhatsApp webhook: ' . $e->getMessage());
+        return new WP_REST_Response(['error' => $e->getMessage()], 500);
     }
 }
 
 /**
- * Async webhook processor
- * Handles the webhook data processing in the background
+ * Process incoming WhatsApp message based on type
+ * 
+ * @param array $data The message data from webhook
+ * @return bool Whether processing was successful
  */
-if (!function_exists('kwetupizza_process_whatsapp_webhook')) {
-    function kwetupizza_process_whatsapp_webhook($webhook_data) {
-        if (get_option('kwetupizza_enable_logging', false)) {
-            error_log('Processing webhook data asynchronously: ' . print_r($webhook_data, true));
-        }
-        
-        // Extract data from the webhook payload
-        if (!isset($webhook_data['entry'][0]['changes'][0]['value'])) {
-            error_log('Invalid webhook structure: Missing value data');
-            return;
-        }
-        
-        $value = $webhook_data['entry'][0]['changes'][0]['value'];
-        
-        // Store the phone_number_id for use in replies
-        global $kwetupizza_webhook_metadata;
-        $kwetupizza_webhook_metadata = array();
-        
-        if (isset($value['metadata']) && isset($value['metadata']['phone_number_id'])) {
-            $kwetupizza_webhook_metadata['phone_number_id'] = $value['metadata']['phone_number_id'];
+function kwetupizza_process_whatsapp_webhook($data) {
+    // Extract values from the webhook data
+    if (!isset($data['entry'][0]['changes'][0]['value']['messages'][0])) {
+        error_log('WhatsApp Webhook: No message found in data');
+        return false;
+    }
+    
+    $message = $data['entry'][0]['changes'][0]['value']['messages'][0];
+    $from = $message['from'];
+    
+    // Process message based on type
+    switch ($message['type']) {
+        case 'text':
+            $text = $message['text']['body'];
+            do_action('kwetupizza_incoming_whatsapp_message', $from, $text);
+            return kwetupizza_process_message($from, $text, 'text');
             
-            // Also update the option immediately
-            update_option('kwetupizza_whatsapp_phone_id', $value['metadata']['phone_number_id']);
+        case 'interactive':
+            do_action('kwetupizza_incoming_whatsapp_message', $from, 'Interactive message received');
+            return kwetupizza_process_interactive_message($from, $message['interactive']);
             
-            if (get_option('kwetupizza_enable_logging', false)) {
-                error_log('Updated WhatsApp phone_id to: ' . $value['metadata']['phone_number_id']);
-            }
-        }
-        
-        // Message processing
-        if (isset($value['messages']) && !empty($value['messages'][0])) {
-            $message = $value['messages'][0];
-            $from = $message['from'];
-            $message_type = $message['type'];
-            $message_content = '';
-
-            if (get_option('kwetupizza_enable_logging', false)) {
-                error_log('Extracted message from: ' . $from . ', type: ' . $message_type);
-            }
-
-            // Extract message content based on type
-            switch ($message_type) {
-                case 'text':
-                    $message_content = isset($message['text']['body']) ? $message['text']['body'] : '';
-                    break;
-                    
-                case 'interactive':
-                    if (isset($message['interactive']['button_reply']['id'])) {
-                        $message_content = $message['interactive']['button_reply']['id'];
-                    } elseif (isset($message['interactive']['list_reply']['id'])) {
-                        $message_content = $message['interactive']['list_reply']['id'];
-                    }
-                    break;
-                    
-                case 'location':
-                    if (isset($message['location'])) {
-                        $latitude = $message['location']['latitude'];
-                        $longitude = $message['location']['longitude'];
-                        $message_content = "location:$latitude,$longitude";
-                    }
-                    break;
-                    
-                default:
-                    $message_content = "unsupported:$message_type";
-            }
-
-            if (get_option('kwetupizza_enable_logging', false)) {
-                error_log('Extracted message content: ' . $message_content);
-            }
-
-            // Process the message if we have valid data
-            if (!empty($from) && !empty($message_content)) {
-                // Direct call instead of hook for more immediate response
-                kwetupizza_process_message($from, $message_content, $message_type);
-                
-                if (get_option('kwetupizza_enable_logging', false)) {
-                    error_log('Message passed to process_message function');
-                }
-            } else {
-                error_log('Error: Empty from or message_content');
-            }
-        }
-        // Status update processing
-        elseif (isset($value['statuses']) && !empty($value['statuses'][0])) {
-            $status = $value['statuses'][0];
-            do_action('kwetupizza_whatsapp_status_update', $status);
-        } else {
-            error_log('No messages or statuses found in webhook data');
-        }
+        case 'image':
+            $image_id = $message['image']['id'];
+            $caption = isset($message['image']['caption']) ? $message['image']['caption'] : '';
+            do_action('kwetupizza_incoming_whatsapp_message', $from, 'Image received: ' . $caption);
+            return kwetupizza_process_message($from, $caption, 'image', $image_id);
+            
+        case 'location':
+            $latitude = $message['location']['latitude'];
+            $longitude = $message['location']['longitude'];
+            $location_data = "{$latitude},{$longitude}";
+            do_action('kwetupizza_incoming_whatsapp_message', $from, 'Location received');
+            return kwetupizza_process_message($from, $location_data, 'location');
+            
+        default:
+            // Log unsupported message type
+            error_log("Unsupported WhatsApp message type: {$message['type']}");
+            kwetupizza_send_whatsapp_message($from, "Sorry, I don't understand that type of message. Please send text or use the menu options.");
+            return false;
     }
 }
-add_action('kwetupizza_process_whatsapp_webhook', 'kwetupizza_process_whatsapp_webhook');
+
+/**
+ * Process interactive messages from WhatsApp
+ * 
+ * @param string $from The sender's phone number
+ * @param array $interactive The interactive message data
+ * @return bool Whether processing was successful
+ */
+function kwetupizza_process_interactive_message($from, $interactive) {
+    $context = kwetupizza_get_conversation_context($from);
+    
+    // Log for debugging
+    if (get_option('kwetupizza_enable_logging', false)) {
+        error_log('Processing interactive message: ' . json_encode($interactive));
+    }
+    
+    // Process based on interactive type
+    switch ($interactive['type']) {
+        case 'button_reply':
+            $button_id = $interactive['button_reply']['id'];
+            $button_text = $interactive['button_reply']['title'];
+            
+            // Log the user's selection
+            if (get_option('kwetupizza_enable_logging', false)) {
+                error_log("Button selected: {$button_id} - {$button_text}");
+            }
+            
+            // Process button selection
+            return kwetupizza_process_button_selection($from, $button_id, $context);
+            
+        case 'list_reply':
+            $list_id = $interactive['list_reply']['id'];
+            $list_title = $interactive['list_reply']['title'];
+            
+            // Log the user's selection
+            if (get_option('kwetupizza_enable_logging', false)) {
+                error_log("List item selected: {$list_id} - {$list_title}");
+            }
+            
+            // Process list selection
+            return kwetupizza_process_list_selection($from, $list_id, $context);
+            
+        default:
+            // Log unsupported interactive type
+            error_log("Unsupported WhatsApp interactive type: {$interactive['type']}");
+            kwetupizza_send_whatsapp_message($from, "Sorry, I don't understand that type of interaction. Please try again.");
+            return false;
+    }
+}
+
+/**
+ * Process button selections from interactive messages
+ * 
+ * @param string $from The sender's phone number
+ * @param string $button_id The selected button ID
+ * @param array $context The user's conversation context
+ * @return bool Whether processing was successful
+ */
+function kwetupizza_process_button_selection($from, $button_id, $context) {
+    global $wpdb;
+    
+    // Check what the user is awaiting
+    $awaiting = isset($context['awaiting']) ? $context['awaiting'] : '';
+    
+    switch ($awaiting) {
+        case 'main_menu_selection':
+            // Handle main menu buttons
+            switch ($button_id) {
+                case 'view_menu':
+                    return kwetupizza_show_interactive_menu($from);
+                    
+                case 'track_order':
+                    $message = "Please provide your order number to track your order.";
+                    $context['awaiting'] = 'order_number';
+                    kwetupizza_set_conversation_context($from, $context);
+                    return kwetupizza_send_whatsapp_message($from, $message);
+                    
+                case 'help':
+                    return kwetupizza_send_help_message($from);
+                    
+                default:
+                    return kwetupizza_send_default_message($from);
+            }
+            break;
+            
+        case 'help_selection':
+            // Handle help menu buttons
+            return kwetupizza_handle_help_selection($from, $button_id);
+            
+        case 'payment_confirmation':
+            // Handle payment confirmation buttons
+            if ($button_id == 'payment_yes') {
+                // Confirm payment using existing function
+                if (function_exists('kwetupizza_confirm_payment')) {
+                    return kwetupizza_confirm_payment($from);
+                } else {
+                    $message = "Thank you for confirming your payment. We'll process your order shortly.";
+                    return kwetupizza_send_whatsapp_message($from, $message);
+                }
+            } else {
+                // Handle payment retry/cancel
+                if (function_exists('kwetupizza_retry_payment')) {
+                    return kwetupizza_retry_payment($from);
+                } else {
+                    $message = "Your payment wasn't confirmed. Please try again or contact our support team.";
+                    return kwetupizza_send_whatsapp_message($from, $message);
+                }
+            }
+            break;
+            
+        case 'order_confirmation':
+            // Handle order confirmation buttons
+            if ($button_id == 'order_confirm') {
+                // Finalize order using existing function
+                if (function_exists('kwetupizza_finalize_order')) {
+                    return kwetupizza_finalize_order($from);
+                } else {
+                    $message = "Thank you for confirming your order. We'll process it right away!";
+                    return kwetupizza_send_whatsapp_message($from, $message);
+                }
+            } else {
+                // Cancel order
+                if (function_exists('kwetupizza_cancel_order')) {
+                    return kwetupizza_cancel_order($from);
+                } else {
+                    $message = "Your order has been cancelled. Feel free to start a new order anytime!";
+                    $context = array(); // Reset context
+                    kwetupizza_set_conversation_context($from, $context);
+                    return kwetupizza_send_whatsapp_message($from, $message);
+                }
+            }
+            break;
+            
+        default:
+            // For any other button ID, try to process it
+            if (strpos($button_id, 'quantity_') === 0) {
+                // Extract quantity value from button ID
+                $quantity = substr($button_id, 9);
+                
+                // Update cart with quantity
+                if (isset($context['current_product_id'])) {
+                    return kwetupizza_process_quantity_selection($from, "{$context['current_product_id']}_{$quantity}");
+                } else {
+                    return kwetupizza_send_default_message($from);
+                }
+            } elseif (strpos($button_id, 'help_') === 0) {
+                return kwetupizza_handle_help_selection($from, $button_id);
+            } else {
+                return kwetupizza_send_default_message($from);
+            }
+    }
+    
+    return false;
+}
+
+/**
+ * Process list selections from interactive messages
+ * 
+ * @param string $from The sender's phone number
+ * @param string $list_id The selected list item ID
+ * @param array $context The user's conversation context
+ * @return bool Whether processing was successful
+ */
+function kwetupizza_process_list_selection($from, $list_id, $context) {
+    // Check if the user is in the main menu
+    $awaiting = isset($context['awaiting']) ? $context['awaiting'] : '';
+    
+    switch ($awaiting) {
+        case 'main_menu_selection':
+            // Process main menu selection
+            return kwetupizza_handle_main_menu_selection($from, $list_id);
+            
+        case 'menu_selection':
+            // Process food menu selection
+            if (strpos($list_id, 'pizza_') === 0) {
+                $product_id = substr($list_id, 6);
+                return kwetupizza_process_menu_selection($from, $product_id);
+            } elseif (strpos($list_id, 'side_') === 0) {
+                $product_id = substr($list_id, 5);
+                return kwetupizza_process_menu_selection($from, $product_id);
+            } elseif (strpos($list_id, 'drink_') === 0) {
+                $product_id = substr($list_id, 6);
+                return kwetupizza_process_menu_selection($from, $product_id);
+            } elseif (strpos($list_id, 'dessert_') === 0) {
+                $product_id = substr($list_id, 8);
+                return kwetupizza_process_menu_selection($from, $product_id);
+            } else {
+                return kwetupizza_send_default_message($from);
+            }
+            break;
+            
+        default:
+            // For any other list ID, try general processing
+            if (strpos($list_id, 'help_') === 0) {
+                return kwetupizza_handle_help_selection($from, $list_id);
+            } else {
+                return kwetupizza_send_default_message($from);
+            }
+    }
+    
+    return false;
+}
 
 /**
  * Verify WhatsApp webhook signature
@@ -586,110 +755,105 @@ if (!function_exists('kwetupizza_generate_whatsapp_verify_token')) {
 }
 
 /**
- * Render WhatsApp webhook helper in the admin area
+ * Render the WhatsApp webhook helper in the admin interface
  */
-if (!function_exists('kwetupizza_render_whatsapp_webhook_helper')) {
-    function kwetupizza_render_whatsapp_webhook_helper() {
-        // Only run this in admin and when WordPress functions are available
-        if (!is_admin() || !function_exists('wp_create_nonce')) {
-            return;
-        }
+function kwetupizza_render_whatsapp_webhook_helper() {
+    // Only run this function in admin context
+    if (!is_admin()) {
+        return;
+    }
+    
+    $verify_token = get_option('kwetupizza_whatsapp_verify_token', '');
+    $webhook_url = kwetupizza_get_whatsapp_webhook_url();
+    $last_test_result = get_option('kwetupizza_last_webhook_test', '');
+    ?>
+    <div class="kwetupizza-webhook-helper">
+        <h3>WhatsApp Webhook Configuration</h3>
+        <p>Use the following details to configure your WhatsApp Business API webhook:</p>
         
-        // Only add this to the settings page
-        $screen = get_current_screen();
-        if (!$screen || $screen->id !== 'kwetupizza_page_kwetupizza-settings') {
-            return;
-        }
-        
-        ?>
-        <div id="whatsapp-webhook-helper" style="margin-top: 20px;">
-            <h3>WhatsApp Webhook Configuration Helper</h3>
-            <p>This tool helps you verify your WhatsApp webhook configuration.</p>
-            
-            <div class="webhook-url-display">
-                <strong>Your Webhook URL:</strong>
-                <code><?php echo esc_url(kwetupizza_get_whatsapp_webhook_url()); ?></code>
-                <button id="copy-webhook-url" class="button button-secondary">Copy URL</button>
-            </div>
-            
-            <p>
-                <strong>Verify Token:</strong>
-                <code><?php echo esc_html(get_option('kwetupizza_whatsapp_verify_token', '')); ?></code>
-                <button id="generate-verify-token" class="button button-secondary">Generate New Token</button>
-            </p>
-            
-            <div id="test-webhook-container" style="margin-top: 15px;">
-                <button id="test-webhook" class="button button-primary">Test Webhook Configuration</button>
-                <div id="test-result" style="margin-top: 10px;"></div>
+        <div class="webhook-url-container">
+            <label>Webhook URL:</label>
+            <div class="url-copy-container">
+                <input type="text" id="webhook-url" value="<?php echo esc_url($webhook_url); ?>" readonly />
+                <button type="button" class="button copy-webhook-url" onclick="copyWebhookUrl()">Copy</button>
             </div>
         </div>
         
-        <script type="text/javascript">
-        jQuery(document).ready(function($) {
-            // Copy webhook URL
-            $('#copy-webhook-url').on('click', function() {
-                var webhookUrl = '<?php echo esc_url(kwetupizza_get_whatsapp_webhook_url()); ?>';
-                navigator.clipboard.writeText(webhookUrl).then(function() {
-                    alert('Webhook URL copied to clipboard!');
-                });
-            });
-            
-            // Generate new verify token
-            $('#generate-verify-token').on('click', function() {
-                if (confirm('Are you sure you want to generate a new verification token? This will require updating your webhook settings with Meta.')) {
+        <div class="verify-token-container">
+            <label>Verify Token:</label>
+            <div class="token-container">
+                <input type="text" id="verify-token" value="<?php echo esc_attr($verify_token); ?>" readonly />
+                <button type="button" class="button generate-token" id="generate-token">Generate New Token</button>
+            </div>
+        </div>
+        
+        <div class="webhook-test-container">
+            <button type="button" class="button test-webhook" id="test-webhook">Test Webhook</button>
+            <div class="test-result" id="test-result" style="display: <?php echo empty($last_test_result) ? 'none' : 'block'; ?>">
+                <h4>Last Test Result:</h4>
+                <pre><?php echo esc_html($last_test_result); ?></pre>
+            </div>
+        </div>
+        
+        <script>
+            jQuery(document).ready(function($) {
+                $('#generate-token').on('click', function() {
                     $.ajax({
-                        url: '<?php echo esc_url(admin_url('admin-ajax.php')); ?>',
+                        url: ajaxurl,
                         type: 'POST',
                         data: {
-                            action: 'generate_whatsapp_verify_token',
-                            security: '<?php echo wp_create_nonce('kwetu_pizza_whatsapp_token_nonce'); ?>'
+                            action: 'kwetupizza_generate_verify_token',
+                            nonce: '<?php echo wp_create_nonce('kwetupizza_generate_token'); ?>'
                         },
                         success: function(response) {
                             if (response.success) {
-                                alert('New token generated: ' + response.data.token);
-                                location.reload();
+                                $('#verify-token').val(response.data.token);
                             } else {
-                                alert('Error: ' + response.data);
+                                alert('Error generating token: ' + response.data.message);
                             }
                         }
                     });
-                }
-            });
-            
-            // Test webhook configuration
-            $('#test-webhook').on('click', function() {
-                var $button = $(this);
-                var $result = $('#test-result');
+                });
                 
-                $button.prop('disabled', true);
-                $result.html('<em>Testing webhook...</em>');
-                
-                $.ajax({
-                    url: '<?php echo esc_url(admin_url('admin-ajax.php')); ?>',
-                    type: 'POST',
-                    data: {
-                        action: 'test_whatsapp_webhook',
-                        security: '<?php echo wp_create_nonce('kwetu_pizza_whatsapp_test_nonce'); ?>'
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            $result.html('<span style="color:green;">✓ Success! Webhook is properly configured.</span>');
-                        } else {
-                            $result.html('<span style="color:red;">✗ Error: ' + response.data + '</span>');
+                $('#test-webhook').on('click', function() {
+                    $(this).prop('disabled', true).text('Testing...');
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        type: 'POST',
+                        data: {
+                            action: 'kwetupizza_test_whatsapp_webhook',
+                            nonce: '<?php echo wp_create_nonce('kwetupizza_test_webhook'); ?>'
+                        },
+                        success: function(response) {
+                            $('#test-webhook').prop('disabled', false).text('Test Webhook');
+                            
+                            if (response.success) {
+                                $('#test-result').show().find('pre').html(response.data.result);
+                            } else {
+                                alert('Error testing webhook: ' + response.data.message);
+                            }
                         }
-                    },
-                    error: function() {
-                        $result.html('<span style="color:red;">✗ Test failed. Check server logs.</span>');
-                    },
-                    complete: function() {
-                        $button.prop('disabled', false);
-                    }
+                    });
                 });
             });
-        });
+            
+            function copyWebhookUrl() {
+                var urlField = document.getElementById('webhook-url');
+                urlField.select();
+                document.execCommand('copy');
+                
+                var copyButton = document.querySelector('.copy-webhook-url');
+                var originalText = copyButton.textContent;
+                copyButton.textContent = 'Copied!';
+                
+                setTimeout(function() {
+                    copyButton.textContent = originalText;
+                }, 2000);
+            }
         </script>
-        <?php
-    }
+    </div>
+    <?php
 }
 
 /**
@@ -824,41 +988,114 @@ function kwetupizza_process_message($from, $message, $message_type = 'text') {
             }
         }
         
-        // Check for greeting messages
+        // Clean up the message - lowercase & trim
+        $original_message = $message;
+        $message = strtolower(trim($message));
+        
+        // Check for greeting/menu/help commands
         $greeting_patterns = array(
             '/^hi$/i', 
             '/^hello$/i', 
             '/^hey$/i', 
             '/^howdy$/i', 
-            '/^start$/i',
-            '/^menu$/i',
-            '/^help$/i'
+            '/^start$/i'
         );
         
         $is_greeting = false;
         foreach ($greeting_patterns as $pattern) {
-            if (preg_match($pattern, trim($message))) {
+            if (preg_match($pattern, $message)) {
                 $is_greeting = true;
                 break;
             }
         }
         
-        if ($is_greeting) {
-            // Send greeting message
-            kwetupizza_send_greeting($from);
-            
-            // Reset conversation context
-            kwetupizza_reset_conversation_context($from);
-            
+        // Get the conversation context
+        $context = kwetupizza_get_conversation_context($from);
+        
+        // Check if user has requested a live agent
+        if (isset($context['live_agent_requested']) && $context['live_agent_requested']) {
+            // If a live agent is handling this conversation, just log the message and don't process it
+            if (function_exists('kwetupizza_log_whatsapp_conversation')) {
+                kwetupizza_log_whatsapp_conversation(array(
+                    'phone' => $from,
+                    'message' => $original_message,
+                    'direction' => 'incoming',
+                    'timestamp' => current_time('mysql')
+                ));
+            }
             return true;
         }
         
-        // Get the conversation context
-        $context = kwetupizza_get_conversation_context($from);
+        // Handle special commands
+        if ($is_greeting || $message === 'menu' || $message === 'start') {
+            // Send new interactive menu
+            return kwetupizza_send_main_menu($from);
+        } elseif ($message === 'help') {
+            // Create support ticket and send help options
+            return kwetupizza_send_help_message($from);
+        } elseif ($message === 'reset') {
+            // Reset the conversation
+            kwetupizza_reset_conversation_context($from);
+            return kwetupizza_send_main_menu($from);
+        } elseif ($message === 'agent' || $message === 'live agent' || $message === 'human') {
+            // Direct connection to live agent
+            $context['awaiting'] = 'live_agent';
+            $context['live_agent_requested'] = true;
+            kwetupizza_set_conversation_context($from, $context);
+            
+            // Create support ticket if none exists
+            if (!isset($context['support_ticket_id'])) {
+                $user_details = kwetupizza_get_customer_details($from);
+                $name = !empty($user_details['name']) ? $user_details['name'] : 'Customer';
+                $issue = "Direct request for live agent from {$name}";
+                $ticket_id = kwetupizza_create_support_ticket($from, $issue);
+                $context['support_ticket_id'] = $ticket_id;
+                kwetupizza_set_conversation_context($from, $context);
+            }
+            
+            // Notify admin about live agent request
+            kwetupizza_notify_admin_of_live_chat($from, $context['support_ticket_id']);
+            
+            // Inform user
+            $message = "I'm connecting you with a customer service agent. Please wait while I transfer your chat. An agent will respond shortly.";
+            return kwetupizza_send_whatsapp_message($from, $message);
+        }
         
         // Handle based on context
         if (isset($context['awaiting']) && !empty($context['awaiting'])) {
             switch ($context['awaiting']) {
+                case 'help_order_details':
+                case 'help_menu_details':
+                case 'help_delivery_details':
+                case 'help_payment_details':
+                case 'help_details':
+                    // Update the support ticket with the details
+                    if (isset($context['support_ticket_id'])) {
+                        global $wpdb;
+                        $ticket_id = $context['support_ticket_id'];
+                        $current_issue = $wpdb->get_var($wpdb->prepare(
+                            "SELECT issue FROM {$wpdb->prefix}kwetupizza_support_tickets WHERE id = %d",
+                            $ticket_id
+                        ));
+                        
+                        if ($current_issue) {
+                            $updated_issue = $current_issue . "\n\nCustomer's details: " . $original_message;
+                            kwetupizza_update_support_ticket_issue($ticket_id, $updated_issue);
+                        }
+                        
+                        // Let the user know their message has been received
+                        $reply = "Thank you for providing those details. Our team will review your issue and get back to you soon. If you need to speak with an agent immediately, reply with 'agent'.";
+                        kwetupizza_send_whatsapp_message($from, $reply);
+                        
+                        // Keep the context in help mode
+                        $context['awaiting'] = 'further_help';
+                        kwetupizza_set_conversation_context($from, $context);
+                    } else {
+                        // Create a new ticket if somehow we don't have one
+                        kwetupizza_send_help_message($from);
+                    }
+                    return true;
+                
                 case 'product_selection':
                     // Handle product selection
                     kwetupizza_handle_product_selection($from, $message);
@@ -884,8 +1121,8 @@ function kwetupizza_process_message($from, $message, $message_type = 'text') {
                     kwetupizza_handle_payment_phone_input($from, $message);
                     break;
                 default:
-                    // For any other state, send the default response
-                    kwetupizza_send_default_message($from);
+                    // For any other state, try the main menu
+                    kwetupizza_send_main_menu($from);
             }
             
             return true;
@@ -906,8 +1143,8 @@ function kwetupizza_process_message($from, $message, $message_type = 'text') {
             return true;
         }
         
-        // Send a default response if nothing else matched
-        kwetupizza_send_default_message($from);
+        // Send the main menu if nothing else matched
+        kwetupizza_send_main_menu($from);
         
         return true;
     } catch (Exception $e) {

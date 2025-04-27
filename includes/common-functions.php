@@ -2062,4 +2062,355 @@ function kwetupizza_send_list_message($phone_number, $message, $button_text, $se
     return true;
 }
 
+/**
+ * Send a help message to the user and create a support ticket
+ * 
+ * @param string $phone The user's phone number
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_send_help_message($phone) {
+    // Create a support ticket
+    $user_details = kwetupizza_get_customer_details($phone);
+    $name = !empty($user_details['name']) ? $user_details['name'] : 'Customer';
+    $issue = "WhatsApp help request from {$name}";
+    
+    $ticket_id = kwetupizza_create_support_ticket($phone, $issue);
+    
+    // Compose the help message
+    $message = "👋 Hi there! I've created a support ticket for you (#{$ticket_id}).\n\n";
+    $message .= "What kind of help do you need today?";
+    
+    // Send the message with interactive buttons
+    $sent = kwetupizza_send_interactive_message($phone, $message, [
+        [
+            'id' => 'help_order',
+            'title' => '🛒 Order Help'
+        ],
+        [
+            'id' => 'help_menu',
+            'title' => '📋 Menu Questions'
+        ],
+        [
+            'id' => 'help_delivery',
+            'title' => '🚚 Delivery Help'
+        ],
+        [
+            'id' => 'help_payment',
+            'title' => '💳 Payment Issues'
+        ],
+        [
+            'id' => 'help_agent',
+            'title' => '👨‍💼 Talk to Agent'
+        ]
+    ]);
+    
+    // Update the user's context
+    $context = kwetupizza_get_conversation_context($phone);
+    $context['awaiting'] = 'help_selection';
+    $context['support_ticket_id'] = $ticket_id;
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    // Log the conversation in the admin chat history
+    if (function_exists('kwetupizza_log_whatsapp_conversation')) {
+        kwetupizza_log_whatsapp_conversation(array(
+            'phone' => $phone,
+            'message' => $message,
+            'direction' => 'outgoing',
+            'timestamp' => current_time('mysql')
+        ));
+    }
+    
+    return $sent;
+}
+
+/**
+ * Handle help selections from the interactive menu
+ * 
+ * @param string $phone The user's phone number
+ * @param string $selection The help selection ID
+ * @return bool Whether the response was sent successfully
+ */
+function kwetupizza_handle_help_selection($phone, $selection) {
+    $context = kwetupizza_get_conversation_context($phone);
+    $ticket_id = isset($context['support_ticket_id']) ? $context['support_ticket_id'] : '(unknown)';
+    
+    // Update the support ticket with more specific issue
+    if (function_exists('kwetupizza_update_support_ticket_issue')) {
+        $issue_map = [
+            'help_order' => 'Order assistance',
+            'help_menu' => 'Menu questions',
+            'help_delivery' => 'Delivery help',
+            'help_payment' => 'Payment issues',
+            'help_agent' => 'Requested live agent'
+        ];
+        
+        if (isset($issue_map[$selection])) {
+            kwetupizza_update_support_ticket_issue($ticket_id, $issue_map[$selection]);
+        }
+    }
+    
+    // Handle different help selections
+    switch ($selection) {
+        case 'help_order':
+            $message = "For order help, please let me know your order number if you have one, or describe your issue.";
+            $context['awaiting'] = 'help_order_details';
+            break;
+            
+        case 'help_menu':
+            $message = "What questions do you have about our menu? You can ask about ingredients, allergens, or specific dishes.";
+            $context['awaiting'] = 'help_menu_details';
+            break;
+            
+        case 'help_delivery':
+            $message = "For delivery help, please let me know your order number and describe the issue you're experiencing.";
+            $context['awaiting'] = 'help_delivery_details';
+            break;
+            
+        case 'help_payment':
+            $message = "For payment issues, please describe what problem you're experiencing with your payment.";
+            $context['awaiting'] = 'help_payment_details';
+            break;
+            
+        case 'help_agent':
+            // Connect to a live agent
+            $message = "I'm connecting you with a customer service agent. Please wait while I transfer your chat. An agent will respond shortly.";
+            $context['awaiting'] = 'live_agent';
+            $context['live_agent_requested'] = true;
+            
+            // Notify admin about the live agent request
+            kwetupizza_notify_admin_of_live_chat($phone, $ticket_id);
+            break;
+            
+        default:
+            $message = "I'm not sure what type of help you need. Please select an option from the menu above or type your question.";
+            $context['awaiting'] = 'help_details';
+    }
+    
+    // Send the response
+    $sent = kwetupizza_send_whatsapp_message($phone, $message);
+    
+    // Update the context
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    // Log the conversation in the admin chat history
+    if (function_exists('kwetupizza_log_whatsapp_conversation')) {
+        kwetupizza_log_whatsapp_conversation(array(
+            'phone' => $phone,
+            'message' => $message,
+            'direction' => 'outgoing',
+            'timestamp' => current_time('mysql')
+        ));
+    }
+    
+    return $sent;
+}
+
+/**
+ * Notify admin of a live chat request
+ * 
+ * @param string $phone The user's phone number
+ * @param string $ticket_id The support ticket ID
+ * @return void
+ */
+function kwetupizza_notify_admin_of_live_chat($phone, $ticket_id) {
+    $user_details = kwetupizza_get_customer_details($phone);
+    $name = !empty($user_details['name']) ? $user_details['name'] : 'Unknown customer';
+    
+    // Prepare the notification message
+    $message = "🔴 LIVE CHAT REQUEST 🔴\n";
+    $message .= "Customer: {$name}\n";
+    $message .= "Phone: {$phone}\n";
+    $message .= "Ticket ID: #{$ticket_id}\n\n";
+    $message .= "Please log into the WhatsApp Inbox to respond.";
+    
+    // Get admin contact details
+    $admin_whatsapp = get_option('kwetupizza_admin_whatsapp');
+    $admin_sms = get_option('kwetupizza_admin_sms_number');
+    
+    // Send WhatsApp notification
+    if (!empty($admin_whatsapp)) {
+        kwetupizza_send_whatsapp_message($admin_whatsapp, $message);
+    }
+    
+    // Send SMS notification
+    if (!empty($admin_sms)) {
+        kwetupizza_send_sms($admin_sms, $message);
+    }
+    
+    // Store the notification in the database
+    global $wpdb;
+    $wpdb->insert(
+        $wpdb->prefix . 'kwetupizza_notifications',
+        array(
+            'type' => 'live_chat_request',
+            'reference_id' => $ticket_id,
+            'message' => $message,
+            'created_at' => current_time('mysql'),
+            'is_read' => 0
+        )
+    );
+}
+
+/**
+ * Update a support ticket issue
+ * 
+ * @param int $ticket_id The ticket ID
+ * @param string $issue The new issue description
+ * @return bool Whether the update was successful
+ */
+function kwetupizza_update_support_ticket_issue($ticket_id, $issue) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'kwetupizza_support_tickets';
+    
+    $result = $wpdb->update(
+        $table_name,
+        array('issue' => $issue),
+        array('id' => $ticket_id)
+    );
+    
+    return ($result !== false);
+}
+
+/**
+ * Send an interactive list menu to the user for main intent selection
+ * 
+ * @param string $phone The user's phone number
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_send_main_menu($phone) {
+    $user_details = kwetupizza_get_customer_details($phone);
+    $name = !empty($user_details['name']) ? $user_details['name'] : 'there';
+    
+    // Compose the message
+    $message = "👋 Hello, {$name}! Welcome to KwetuPizza 🍕\n\n";
+    $message .= "How can I help you today?";
+    
+    // Create the sections for the interactive list
+    $sections = [
+        [
+            'title' => '🍕 Food Menu',
+            'rows' => [
+                [
+                    'id' => 'view_menu',
+                    'title' => 'View Full Menu',
+                    'description' => 'See all our delicious options'
+                ],
+                [
+                    'id' => 'order_pizza',
+                    'title' => 'Order Pizza',
+                    'description' => 'Start a pizza order'
+                ],
+                [
+                    'id' => 'order_sides',
+                    'title' => 'Order Sides',
+                    'description' => 'Wings, breadsticks, and more'
+                ]
+            ]
+        ],
+        [
+            'title' => '🛒 Order Options',
+            'rows' => [
+                [
+                    'id' => 'track_order',
+                    'title' => 'Track My Order',
+                    'description' => 'Check the status of your order'
+                ],
+                [
+                    'id' => 'recent_orders',
+                    'title' => 'My Recent Orders',
+                    'description' => 'View your order history'
+                ],
+                [
+                    'id' => 'cancel_order',
+                    'title' => 'Cancel Order',
+                    'description' => 'Cancel an existing order'
+                ]
+            ]
+        ],
+        [
+            'title' => '❓ Help & Support',
+            'rows' => [
+                [
+                    'id' => 'help',
+                    'title' => 'Customer Support',
+                    'description' => 'Get help with any issues'
+                ],
+                [
+                    'id' => 'live_agent',
+                    'title' => 'Talk to a Human',
+                    'description' => 'Connect with a live agent'
+                ],
+                [
+                    'id' => 'feedback',
+                    'title' => 'Give Feedback',
+                    'description' => 'Share your thoughts with us'
+                ]
+            ]
+        ]
+    ];
+    
+    // Send the interactive list message
+    $result = kwetupizza_send_list_message($phone, $message, 'Menu Options', $sections);
+    
+    // Update user context
+    $context = kwetupizza_get_conversation_context($phone);
+    $context['awaiting'] = 'main_menu_selection';
+    $context['greeted'] = true;
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    return $result;
+}
+
+/**
+ * Handle main menu selection from the interactive list
+ * 
+ * @param string $phone The user's phone number
+ * @param string $selection The selected menu option ID
+ * @return bool Whether the response was sent successfully
+ */
+function kwetupizza_handle_main_menu_selection($phone, $selection) {
+    // Handle different menu selections
+    switch ($selection) {
+        case 'view_menu':
+            return kwetupizza_show_interactive_menu($phone);
+            
+        case 'order_pizza':
+            return kwetupizza_show_pizza_menu($phone);
+            
+        case 'order_sides':
+            return kwetupizza_show_sides_menu($phone);
+            
+        case 'track_order':
+            $message = "Please provide your order number to track your order. Your order number can be found in your order confirmation message.";
+            $context = kwetupizza_get_conversation_context($phone);
+            $context['awaiting'] = 'order_number';
+            kwetupizza_set_conversation_context($phone, $context);
+            return kwetupizza_send_whatsapp_message($phone, $message);
+            
+        case 'recent_orders':
+            return kwetupizza_show_recent_orders($phone);
+            
+        case 'cancel_order':
+            $message = "Please provide the order number you wish to cancel. Your order number can be found in your order confirmation message.";
+            $context = kwetupizza_get_conversation_context($phone);
+            $context['awaiting'] = 'cancel_order_number';
+            kwetupizza_set_conversation_context($phone, $context);
+            return kwetupizza_send_whatsapp_message($phone, $message);
+            
+        case 'help':
+        case 'live_agent':
+            return kwetupizza_send_help_message($phone);
+            
+        case 'feedback':
+            $message = "We'd love to hear your feedback! Please tell us about your experience with KwetuPizza.";
+            $context = kwetupizza_get_conversation_context($phone);
+            $context['awaiting'] = 'feedback';
+            kwetupizza_set_conversation_context($phone, $context);
+            return kwetupizza_send_whatsapp_message($phone, $message);
+            
+        default:
+            return kwetupizza_send_default_message($phone);
+    }
+}
+
 ?>
