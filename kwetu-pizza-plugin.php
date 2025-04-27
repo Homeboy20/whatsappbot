@@ -4,6 +4,8 @@ Plugin Name: KwetuPizza Plugin
 Description: A pizza order management plugin with custom database structure, WhatsApp bot integration, and webhook callback URL auto-generation.
 Version: 1.3
 Author: Your Name
+GitHub Plugin URI: https://github.com/yourusername/kwetu-pizza-plugin
+GitHub Branch: main
 */
 date_default_timezone_set('Africa/Nairobi');
 if (!defined('ABSPATH')) {
@@ -14,6 +16,19 @@ if (!defined('ABSPATH')) {
 define('KWETUPIZZA_PLUGIN_FILE', __FILE__);
 define('KWETUPIZZA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KWETUPIZZA_PLUGIN_URL', plugin_dir_url(__FILE__));
+
+// Plugin Update Checker
+if (!class_exists('Puc_v4_Factory')) {
+    require_once KWETUPIZZA_PLUGIN_DIR . 'lib/plugin-update-checker/plugin-update-checker.php';
+    $myUpdateChecker = Puc_v4_Factory::buildUpdateChecker(
+        'https://github.com/yourusername/kwetu-pizza-plugin/',
+        __FILE__,
+        'kwetu-pizza-plugin'
+    );
+    
+    // Set the branch that contains the stable release
+    $myUpdateChecker->setBranch('main');
+}
 
 // Include logger functions first (for capturing errors in other includes)
 if (file_exists(plugin_dir_path(__FILE__) . 'includes/kwetu-logger.php')) {

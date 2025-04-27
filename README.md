@@ -9,6 +9,7 @@ A WordPress plugin that allows customers to order pizza through WhatsApp with in
 - **Order Management**: Track and manage orders through the WordPress admin panel
 - **Webhook System**: Reliable webhooks for both WhatsApp and payment processing
 - **Interactive Menus**: Display interactive menus with images and buttons
+- **Automatic Updates**: Plugin updates automatically from GitHub repository
 
 ## Requirements
 
@@ -39,6 +40,14 @@ A WordPress plugin that allows customers to order pizza through WhatsApp with in
 1. Enter your Flutterwave API keys
 2. Configure the webhook secret
 3. Set up your supported payment methods
+
+## Automatic Updates
+
+This plugin supports automatic updates from GitHub:
+
+1. Updates will be detected in your WordPress admin dashboard
+2. You can update with a single click when new versions are available
+3. Your settings and data will be preserved during updates
 
 ## Usage
 
