@@ -37,25 +37,37 @@ if (file_exists(plugin_dir_path(__FILE__) . 'includes/kwetu-logger.php')) {
     kwetu_log_event('plugin_init', 'Plugin initialization started');
 }
 
-// Include common functions
-if (file_exists(plugin_dir_path(__FILE__) . 'includes/common-functions.php')) {
-require_once plugin_dir_path(__FILE__) . 'includes/common-functions.php';
+// Make sure WordPress is loaded properly
+if (!function_exists('add_action')) {
+    // If WordPress functions aren't available, this file is being accessed directly
+    die('This file cannot be accessed directly.');
 }
 
-// Include WhatsApp handler
-if (file_exists(plugin_dir_path(__FILE__) . 'includes/whatsapp-handler.php')) {
-require_once plugin_dir_path(__FILE__) . 'includes/whatsapp-handler.php';
+// Add a safety check to only load plugin components when WordPress is fully loaded
+function kwetupizza_load_plugin_components() {
+    // Include required files
+    require_once(plugin_dir_path(__FILE__) . 'includes/common-functions.php');
+    require_once(plugin_dir_path(__FILE__) . 'includes/kwetu-debug.php');
+    
+    // Additional files
+    if (file_exists(plugin_dir_path(__FILE__) . 'includes/order-tracking.php')) {
+        require_once(plugin_dir_path(__FILE__) . 'includes/order-tracking.php');
+    }
+    
+    // WhatsApp handler - most likely to cause issues
+    require_once(plugin_dir_path(__FILE__) . 'includes/whatsapp-handler.php');
+    
+    // Admin files - load only in admin context
+    if (is_admin()) {
+        require_once(plugin_dir_path(__FILE__) . 'admin/admin-dashboard.php');
+        require_once(plugin_dir_path(__FILE__) . 'admin/admin-settings.php');
+        require_once(plugin_dir_path(__FILE__) . 'admin/user-management.php');
+        require_once(plugin_dir_path(__FILE__) . 'admin/user-detail.php');
+    }
 }
 
-// Include Order Tracking
-if (file_exists(plugin_dir_path(__FILE__) . 'includes/order-tracking.php')) {
-require_once plugin_dir_path(__FILE__) . 'includes/order-tracking.php';
-}
-
-// Include Debug Functions (for development)
-if (file_exists(plugin_dir_path(__FILE__) . 'includes/kwetu-debug.php')) {
-    require_once plugin_dir_path(__FILE__) . 'includes/kwetu-debug.php';
-}
+// Hook the function to a proper WordPress action to ensure environment is ready
+add_action('plugins_loaded', 'kwetupizza_load_plugin_components');
 
 // Define the database version
 define('KWETUPIZZA_DB_VERSION', '1.1');

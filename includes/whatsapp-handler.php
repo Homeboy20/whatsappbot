@@ -759,7 +759,7 @@ if (!function_exists('kwetupizza_generate_whatsapp_verify_token')) {
  */
 function kwetupizza_render_whatsapp_webhook_helper() {
     // Only run this function in admin context
-    if (!is_admin()) {
+    if (!is_admin() || !function_exists('wp_create_nonce')) {
         return;
     }
     
@@ -803,7 +803,7 @@ function kwetupizza_render_whatsapp_webhook_helper() {
                         type: 'POST',
                         data: {
                             action: 'kwetupizza_generate_verify_token',
-                            nonce: '<?php echo wp_create_nonce('kwetupizza_generate_token'); ?>'
+                            nonce: '<?php echo function_exists('wp_create_nonce') ? wp_create_nonce('kwetupizza_generate_token') : ""; ?>'
                         },
                         success: function(response) {
                             if (response.success) {
@@ -823,7 +823,7 @@ function kwetupizza_render_whatsapp_webhook_helper() {
                         type: 'POST',
                         data: {
                             action: 'kwetupizza_test_whatsapp_webhook',
-                            nonce: '<?php echo wp_create_nonce('kwetupizza_test_webhook'); ?>'
+                            nonce: '<?php echo function_exists('wp_create_nonce') ? wp_create_nonce('kwetupizza_test_webhook') : ""; ?>'
                         },
                         success: function(response) {
                             $('#test-webhook').prop('disabled', false).text('Test Webhook');
