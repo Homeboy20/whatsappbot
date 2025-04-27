@@ -11,38 +11,216 @@ if (!defined('ABSPATH')) {
  * ====================================
  */
 
-// Helper function to get conversation context
-function kwetupizza_get_conversation_context($from) {
-    $context = get_transient("kwetupizza_whatsapp_context_$from");
-    return $context ? $context : [];
+/**
+ * Get conversation context for a given phone number
+ * 
+ * @param string $phone The phone number to get context for
+ * @return array The conversation context
+ */
+function kwetupizza_get_conversation_context($phone) {
+    global $wpdb;
+    
+    // Try to get context from user record first
+    $user = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}kwetupizza_users WHERE phone = %s",
+        $phone
+    ));
+    
+    if (!$user) {
+        // Create a new user record if they don't exist
+        $wpdb->insert(
+            $wpdb->prefix . 'kwetupizza_users',
+            array(
+                'name' => 'WhatsApp User',
+                'email' => '',
+                'phone' => $phone,
+                'role' => 'customer',
+                'state' => 'greeting'
+            ),
+            array('%s', '%s', '%s', '%s', '%s')
+        );
+        
+        // Return default context for new users
+        return array(
+            'state' => 'greeting',
+            'cart' => array(),
+            'last_activity' => time(),
+            'awaiting' => '',
+            'order_id' => 0
+        );
+    }
+    
+    // Get state from user record
+    $state = $user->state ?: 'greeting';
+    
+    // Try to get additional context from transient
+    $transient_key = "kwetupizza_context_{$phone}";
+    $context = get_transient($transient_key);
+    
+    if (!$context) {
+        // Try to get from user meta as fallback
+        $context_json = get_user_meta($user->id, 'whatsapp_context', true);
+        if (!empty($context_json)) {
+            $context = json_decode($context_json, true);
+        }
+    }
+    
+    // If we have context, ensure state is synced with user record
+    if (is_array($context)) {
+        $context['state'] = $state;
+        return $context;
+    }
+    
+    // Return default context if none found
+    return array(
+        'state' => $state,
+        'cart' => array(),
+        'last_activity' => time(),
+        'awaiting' => '',
+        'order_id' => 0
+    );
 }
 
-// Update the last activity timestamp
-function kwetupizza_set_conversation_context($from, $context) {
-    $context['last_activity'] = time();  // Add last activity timestamp
-    set_transient("kwetupizza_whatsapp_context_$from", $context, 60 * 60 * 24);  // Store for 24 hours
+/**
+ * Set conversation context for a given phone number
+ * 
+ * @param string $phone The phone number to set context for
+ * @param array $context The conversation context to set
+ * @return bool Whether the operation was successful
+ */
+function kwetupizza_set_conversation_context($phone, $context) {
+    global $wpdb;
+    
+    if (empty($phone) || !is_array($context)) {
+        return false;
+    }
+    
+    // Update last activity timestamp
+    $context['last_activity'] = time();
+    
+    // Find user in database
+    $user = $wpdb->get_row($wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}kwetupizza_users WHERE phone = %s",
+        $phone
+    ));
+    
+    // Create user if they don't exist
+    if (!$user) {
+        $result = $wpdb->insert(
+            $wpdb->prefix . 'kwetupizza_users',
+            array(
+                'name' => 'WhatsApp User',
+                'email' => '',
+                'phone' => $phone,
+                'role' => 'customer',
+                'state' => isset($context['state']) ? $context['state'] : 'greeting'
+            ),
+            array('%s', '%s', '%s', '%s', '%s')
+        );
+        
+        if (!$result) {
+            return false;
+        }
+        
+        $user_id = $wpdb->insert_id;
+    } else {
+        $user_id = $user->id;
+    }
+    
+    // Update state in user record
+    if (isset($context['state'])) {
+        $wpdb->update(
+            $wpdb->prefix . 'kwetupizza_users',
+            array('state' => $context['state']),
+            array('id' => $user_id),
+            array('%s'),
+            array('%d')
+        );
+    }
+    
+    // Store in transient for fast access (8 hour expiration)
+    $transient_key = "kwetupizza_context_{$phone}";
+    set_transient($transient_key, $context, 8 * HOUR_IN_SECONDS);
+    
+    // Also save in user meta as backup
+    update_user_meta($user_id, 'whatsapp_context', json_encode($context));
+    
+    return true;
 }
 
-// Reset the conversation context
-function kwetupizza_reset_conversation($from) {
-    delete_transient("kwetupizza_whatsapp_context_$from");
+/**
+ * Reset conversation context for a given phone number
+ * 
+ * @param string $phone The phone number to reset context for
+ * @return bool Whether the operation was successful
+ */
+function kwetupizza_reset_conversation_context($phone) {
+    global $wpdb;
+    
+    // Update state to greeting in user table
+    $wpdb->update(
+        $wpdb->prefix . 'kwetupizza_users',
+        array('state' => 'greeting'),
+        array('phone' => $phone),
+        array('%s'),
+        array('%s')
+    );
+    
+    // Get user ID
+    $user = $wpdb->get_row($wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}kwetupizza_users WHERE phone = %s",
+        $phone
+    ));
+    
+    if ($user) {
+        // Reset context to default
+        $default_context = array(
+            'state' => 'greeting',
+            'cart' => array(),
+            'last_activity' => time(),
+            'awaiting' => '',
+            'order_id' => 0
+        );
+        
+        // Update transient
+        $transient_key = "kwetupizza_context_{$phone}";
+        set_transient($transient_key, $default_context, 8 * HOUR_IN_SECONDS);
+        
+        // Update user meta
+        update_user_meta($user->id, 'whatsapp_context', json_encode($default_context));
+    }
+    
+    return true;
 }
 
-// Check for inactivity and reset conversation if idle for more than 3 minutes
-function kwetupizza_check_inactivity_and_reset($from) {
-    $context = kwetupizza_get_conversation_context($from);
-
+/**
+ * Check for inactivity and reset conversation if idle for too long
+ * 
+ * @param string $phone The phone number to check
+ * @return bool Whether the conversation was reset due to inactivity
+ */
+function kwetupizza_check_inactivity_and_reset($phone) {
+    $context = kwetupizza_get_conversation_context($phone);
+    
     if (isset($context['last_activity'])) {
         $time_since_last_activity = time() - $context['last_activity'];
-
-        // 180 seconds = 3 minutes
-        if ($time_since_last_activity > 180) {
-            kwetupizza_reset_conversation($from);
-            kwetupizza_send_greeting_with_menu_and_support($from);
+        
+        // Reset after 10 minutes of inactivity (changed from 3 minutes)
+        $inactivity_timeout = 10 * 60; // 10 minutes in seconds
+        
+        if ($time_since_last_activity > $inactivity_timeout) {
+            kwetupizza_reset_conversation_context($phone);
+            kwetupizza_send_greeting_with_menu($phone);
             return true;
         }
     }
+    
     return false;
+}
+
+// Alias for backwards compatibility
+function kwetupizza_reset_conversation($phone) {
+    return kwetupizza_reset_conversation_context($phone);
 }
 
 /**
@@ -51,35 +229,55 @@ function kwetupizza_check_inactivity_and_reset($from) {
  * ====================================
  */
 
-// Send greeting, menu, and support instructions
-function kwetupizza_send_greeting_with_menu_and_support($from) {
-    // Fetch the menu message
-    $menu_message = kwetupizza_get_menu_message();
-
-    // Compose the greeting message with the menu
-    $message  = "Hello! Welcome to KwetuPizza 🍕.\n\n";
-    $message .= $menu_message . "\n\n";
-    $message .= "Please type the number of the item you'd like to order. If you need assistance, please contact us at +255 696 110 259.";
-
-    // Send the message
-    kwetupizza_send_whatsapp_message($from, $message);
-
-    // Set the user's state to 'awaiting_menu_selection'
-    $user_context              = kwetupizza_get_conversation_context($from);
-    $user_context['awaiting']  = 'menu_selection';
-    $user_context['greeted']   = true;
-    kwetupizza_set_conversation_context($from, $user_context);
+/**
+ * Send modern greeting with interactive menu
+ * 
+ * @param string $phone The recipient's phone number
+ */
+function kwetupizza_send_greeting_with_menu($phone) {
+    // Personalize greeting if we know the user
+    $user_details = kwetupizza_get_customer_details($phone);
+    $name = !empty($user_details['name']) ? $user_details['name'] : 'there';
+    
+    // Compose the greeting message
+    $message = "👋 Hello, {$name}! Welcome to KwetuPizza 🍕\n\n";
+    $message .= "I'm your virtual assistant. How can I help you today?";
+    
+    // Send the message with interactive buttons
+    kwetupizza_send_interactive_message($phone, $message, [
+        [
+            'id' => 'view_menu',
+            'title' => '📋 View Menu'
+        ],
+        [
+            'id' => 'track_order',
+            'title' => '🚚 Track Order'
+        ],
+        [
+            'id' => 'help',
+            'title' => '❓ Help'
+        ]
+    ]);
+    
+    // Set the user's context
+    $context = kwetupizza_get_conversation_context($phone);
+    $context['awaiting'] = 'main_menu_selection';
+    $context['greeted'] = true;
+    kwetupizza_set_conversation_context($phone, $context);
 }
 
-// Simple greeting message
-function kwetupizza_send_greeting($from) {
-    $message = "Hello! Welcome to KwetuPizza 🍕. Type 'menu' to view our options, or 'order' to start your order. If you need to restart, type 'reset'.";
-    kwetupizza_send_whatsapp_message($from, $message);
+/**
+ * Simple alias for the main greeting function for backward compatibility
+ */
+function kwetupizza_send_greeting($phone) {
+    kwetupizza_send_greeting_with_menu($phone);
+}
 
-    kwetupizza_set_conversation_context($from, [
-        'awaiting' => 'menu_or_order',
-        'greeted'  => true
-    ]);
+/**
+ * Alias for backward compatibility
+ */
+function kwetupizza_send_greeting_with_menu_and_support($phone) {
+    kwetupizza_send_greeting_with_menu($phone);
 }
 
 // Send a default fallback message
@@ -87,43 +285,87 @@ function kwetupizza_send_default_message($from) {
     kwetupizza_send_whatsapp_message($from, "Sorry, I didn't understand that. Type 'menu' to see available options.");
 }
 
-// Fetch and display the full menu
-function kwetupizza_send_full_menu($from) {
+/**
+ * Display the menu to the user using interactive list message
+ * 
+ * @param string $phone The recipient's phone number
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_send_full_menu($phone) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'kwetupizza_products';
-
-    $pizzas   = $wpdb->get_results("SELECT id, product_name, price FROM $table_name WHERE category = 'Pizza'");
-    $drinks   = $wpdb->get_results("SELECT id, product_name, price FROM $table_name WHERE category = 'Drinks'");
-    $desserts = $wpdb->get_results("SELECT id, product_name, price FROM $table_name WHERE category = 'Dessert'");
-
-    $message = "Here's our menu. Please type the number of the item you'd like to order:\n\n";
-
+    
+    // Get menu items by category
+    $pizzas = $wpdb->get_results("SELECT id, product_name, price, description FROM $table_name WHERE category = 'Pizza' AND is_available = 1 ORDER BY id");
+    $drinks = $wpdb->get_results("SELECT id, product_name, price, description FROM $table_name WHERE category = 'Drinks' AND is_available = 1 ORDER BY id");
+    $desserts = $wpdb->get_results("SELECT id, product_name, price, description FROM $table_name WHERE category = 'Dessert' AND is_available = 1 ORDER BY id");
+    
+    // Prepare sections for interactive list message
+    $sections = [];
+    
+    // Add pizzas section
     if ($pizzas) {
-        $message .= "🍕 Pizzas:\n";
+        $pizza_items = [];
         foreach ($pizzas as $pizza) {
-            $message .= "{$pizza->id}. {$pizza->product_name} - " . number_format($pizza->price, 2) . " TZS\n";
+            $pizza_items[] = [
+                'id' => 'pizza_' . $pizza->id,
+                'title' => $pizza->product_name,
+                'description' => number_format($pizza->price, 2) . ' TZS'
+            ];
         }
+        
+        $sections[] = [
+            'title' => '🍕 Pizzas',
+            'rows' => $pizza_items
+        ];
     }
-
+    
+    // Add drinks section
     if ($drinks) {
-        $message .= "\n🥤 Drinks:\n";
+        $drink_items = [];
         foreach ($drinks as $drink) {
-            $message .= "{$drink->id}. {$drink->product_name} - " . number_format($drink->price, 2) . " TZS\n";
+            $drink_items[] = [
+                'id' => 'drink_' . $drink->id,
+                'title' => $drink->product_name,
+                'description' => number_format($drink->price, 2) . ' TZS'
+            ];
         }
+        
+        $sections[] = [
+            'title' => '🥤 Drinks',
+            'rows' => $drink_items
+        ];
     }
-
+    
+    // Add desserts section
     if ($desserts) {
-        $message .= "\n🍰 Desserts:\n";
+        $dessert_items = [];
         foreach ($desserts as $dessert) {
-            $message .= "{$dessert->id}. {$dessert->product_name} - " . number_format($dessert->price, 2) . " TZS\n";
+            $dessert_items[] = [
+                'id' => 'dessert_' . $dessert->id,
+                'title' => $dessert->product_name,
+                'description' => number_format($dessert->price, 2) . ' TZS'
+            ];
         }
+        
+        $sections[] = [
+            'title' => '🍰 Desserts',
+            'rows' => $dessert_items
+        ];
     }
-
-    kwetupizza_send_whatsapp_message($from, $message);
-
-    $context             = kwetupizza_get_conversation_context($from);
+    
+    // Set up the message text
+    $message = "Here's our menu. What would you like to order today?";
+    
+    // Try to send as interactive list
+    $result = kwetupizza_send_list_message($phone, $message, 'View Menu', $sections);
+    
+    // Update user context
+    $context = kwetupizza_get_conversation_context($phone);
     $context['awaiting'] = 'menu_selection';
-    kwetupizza_set_conversation_context($from, $context);
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    return $result;
 }
 
 /**
@@ -225,8 +467,8 @@ function kwetupizza_log_context_and_input($from, $input) {
 
     // Handle "reset"
     if ($message === 'reset') {
-        kwetupizza_reset_conversation($from);
-        kwetupizza_send_greeting_with_menu_and_support($from);
+        kwetupizza_reset_conversation_context($from);
+        kwetupizza_send_greeting_with_menu($from);
         return;
     }
 
@@ -276,7 +518,7 @@ function kwetupizza_log_context_and_input($from, $input) {
 
     // If context is empty, greet with menu
     if (empty($context)) {
-        kwetupizza_send_greeting_with_menu_and_support($from);
+        kwetupizza_send_greeting_with_menu($from);
         return;
     }
 
@@ -394,7 +636,7 @@ function kwetupizza_log_context_and_input($from, $input) {
                 "Your order for *{$scheduled_product['product_name']}* is scheduled for $friendly_str.\nThank you!"
             );
             // Reset the conversation
-            kwetupizza_reset_conversation($from);
+            kwetupizza_reset_conversation_context($from);
         } else {
             kwetupizza_send_whatsapp_message($from, "Unable to schedule your order. Please try again or type 'help'.");
         }
@@ -966,7 +1208,7 @@ function kwetupizza_confirm_payment_and_notify($transaction_id) {
             kwetupizza_notify_admin($order->id, true, 'payment');
 
             // Reset the conversation context after successful payment
-            kwetupizza_reset_conversation($order->customer_phone);
+            kwetupizza_reset_conversation_context($order->customer_phone);
 
             return true;
         } else {
@@ -1144,7 +1386,7 @@ function kwetupizza_handle_retry_or_cancel($from, $response) {
                 $from,
                 "Your order has been cancelled. If you need assistance, please contact us at +255 696 110 259."
             );
-            kwetupizza_reset_conversation($from);
+            kwetupizza_reset_conversation_context($from);
         } else {
             kwetupizza_send_whatsapp_message(
                 $from,
@@ -1386,7 +1628,7 @@ function kwetupizza_process_payment_selection($from, $provider) {
     
     if (empty($context['cart']) || !isset($context['address'])) {
         kwetupizza_send_whatsapp_message($from, "Sorry, there was an error with your order. Please start again.");
-        kwetupizza_reset_conversation($from);
+        kwetupizza_reset_conversation_context($from);
         return;
     }
     
@@ -1614,6 +1856,208 @@ function kwetupizza_send_delivery_update($order_id, $status, $location = null) {
     
     // Update tracking
     kwetupizza_update_order_status($order_id, $status, '', $location);
+    
+    return true;
+}
+
+/**
+ * Send an interactive message with buttons to a WhatsApp user
+ * 
+ * @param string $phone_number Recipient's phone number
+ * @param string $message The message body
+ * @param array $buttons Array of button objects with id and title
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_send_interactive_message($phone_number, $message, $buttons) {
+    $token = get_option('kwetupizza_whatsapp_token');
+    $phone_id = get_option('kwetupizza_whatsapp_phone_id');
+    $api_version = get_option('kwetupizza_whatsapp_api_version', 'v15.0');
+    
+    if (empty($token) || empty($phone_id)) {
+        error_log('WhatsApp API credentials missing');
+        return false;
+    }
+    
+    // Ensure version has 'v' prefix
+    if (strpos($api_version, 'v') !== 0) {
+        $api_version = 'v' . $api_version;
+    }
+    
+    // Format buttons for interactive message
+    $button_items = [];
+    foreach ($buttons as $button) {
+        $button_items[] = [
+            'type' => 'reply',
+            'reply' => [
+                'id' => $button['id'],
+                'title' => $button['title']
+            ]
+        ];
+    }
+    
+    // Prepare request data
+    $request_data = [
+        'messaging_product' => 'whatsapp',
+        'recipient_type' => 'individual',
+        'to' => $phone_number,
+        'type' => 'interactive',
+        'interactive' => [
+            'type' => 'button',
+            'body' => [
+                'text' => $message
+            ],
+            'action' => [
+                'buttons' => $button_items
+            ]
+        ]
+    ];
+    
+    // Log API request if debugging is enabled
+    if (get_option('kwetupizza_enable_logging', false)) {
+        error_log('WhatsApp API Interactive Message Request: ' . json_encode($request_data));
+    }
+    
+    // Send API request
+    $response = wp_remote_post("https://graph.facebook.com/{$api_version}/{$phone_id}/messages", [
+        'headers' => [
+            'Authorization' => 'Bearer ' . $token,
+            'Content-Type' => 'application/json'
+        ],
+        'body' => json_encode($request_data),
+        'timeout' => 30
+    ]);
+    
+    // Check for errors
+    if (is_wp_error($response)) {
+        error_log('WhatsApp API Error: ' . $response->get_error_message());
+        
+        // Fallback to regular text message if interactive fails
+        $fallback_message = $message . "\n\n";
+        foreach ($buttons as $i => $button) {
+            $fallback_message .= ($i + 1) . ". " . $button['title'] . "\n";
+        }
+        
+        return kwetupizza_send_whatsapp_message($phone_number, $fallback_message);
+    }
+    
+    $response_body = json_decode(wp_remote_retrieve_body($response), true);
+    $status_code = wp_remote_retrieve_response_code($response);
+    
+    if ($status_code !== 200) {
+        error_log('WhatsApp API Error: ' . print_r($response_body, true));
+        
+        // Fallback to regular text message
+        $fallback_message = $message . "\n\n";
+        foreach ($buttons as $i => $button) {
+            $fallback_message .= ($i + 1) . ". " . $button['title'] . "\n";
+        }
+        
+        return kwetupizza_send_whatsapp_message($phone_number, $fallback_message);
+    }
+    
+    return true;
+}
+
+/**
+ * Send WhatsApp interactive list message with multiple options
+ * 
+ * @param string $phone_number Recipient's phone number
+ * @param string $message The message body
+ * @param string $button_text The button text
+ * @param array $sections Array of sections with title and items
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_send_list_message($phone_number, $message, $button_text, $sections) {
+    $token = get_option('kwetupizza_whatsapp_token');
+    $phone_id = get_option('kwetupizza_whatsapp_phone_id');
+    $api_version = get_option('kwetupizza_whatsapp_api_version', 'v15.0');
+    
+    if (empty($token) || empty($phone_id)) {
+        error_log('WhatsApp API credentials missing');
+        return false;
+    }
+    
+    // Ensure version has 'v' prefix
+    if (strpos($api_version, 'v') !== 0) {
+        $api_version = 'v' . $api_version;
+    }
+    
+    // Prepare request data
+    $request_data = [
+        'messaging_product' => 'whatsapp',
+        'recipient_type' => 'individual',
+        'to' => $phone_number,
+        'type' => 'interactive',
+        'interactive' => [
+            'type' => 'list',
+            'body' => [
+                'text' => $message
+            ],
+            'action' => [
+                'button' => $button_text,
+                'sections' => $sections
+            ]
+        ]
+    ];
+    
+    // Log API request if debugging is enabled
+    if (get_option('kwetupizza_enable_logging', false)) {
+        error_log('WhatsApp API List Message Request: ' . json_encode($request_data));
+    }
+    
+    // Send API request
+    $response = wp_remote_post("https://graph.facebook.com/{$api_version}/{$phone_id}/messages", [
+        'headers' => [
+            'Authorization' => 'Bearer ' . $token,
+            'Content-Type' => 'application/json'
+        ],
+        'body' => json_encode($request_data),
+        'timeout' => 30
+    ]);
+    
+    // Check for errors
+    if (is_wp_error($response)) {
+        error_log('WhatsApp API List Error: ' . $response->get_error_message());
+        
+        // Fallback to regular text message
+        $fallback_message = $message . "\n\n";
+        foreach ($sections as $section) {
+            $fallback_message .= "===== " . $section['title'] . " =====\n";
+            foreach ($section['rows'] as $row) {
+                $fallback_message .= "• " . $row['title'];
+                if (!empty($row['description'])) {
+                    $fallback_message .= " - " . $row['description'];
+                }
+                $fallback_message .= "\n";
+            }
+            $fallback_message .= "\n";
+        }
+        
+        return kwetupizza_send_whatsapp_message($phone_number, $fallback_message);
+    }
+    
+    $response_body = json_decode(wp_remote_retrieve_body($response), true);
+    $status_code = wp_remote_retrieve_response_code($response);
+    
+    if ($status_code !== 200) {
+        error_log('WhatsApp API List Error: ' . print_r($response_body, true));
+        
+        // Fallback to regular text message
+        $fallback_message = $message . "\n\n";
+        foreach ($sections as $section) {
+            $fallback_message .= "===== " . $section['title'] . " =====\n";
+            foreach ($section['rows'] as $row) {
+                $fallback_message .= "• " . $row['title'];
+                if (!empty($row['description'])) {
+                    $fallback_message .= " - " . $row['description'];
+                }
+                $fallback_message .= "\n";
+            }
+            $fallback_message .= "\n";
+        }
+        
+        return kwetupizza_send_whatsapp_message($phone_number, $fallback_message);
+    }
     
     return true;
 }
