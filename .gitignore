@@ -1,0 +1,42 @@
+# Operating System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Node modules and build files
+/node_modules/
+/build/
+/dist/
+
+# Composer
+/vendor/
+
+# WordPress test and debug files
+/wp-config-test.php
+/wp-config-local.php
+/error_log
+/debug.log
+*.log
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Backup files
+*.bak
+*.zip
+*.tar
+*.gz
+*.sql
+
+# Temporary files
+*.tmp
+*.temp 

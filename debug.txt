@@ -1,0 +1,282 @@
+# KwetuPizza Debug Log File
+# Created: 2025-04-27 12:18:00
+
+This file contains plugin event logs and errors for KwetuPizza plugin.
+Please do not delete this file as it is used for debugging purposes.
+[2025-04-27 12:24:58] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:02] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:04] [ERROR] Fatal Error: Uncaught Error: Call to undefined function wp_create_nonce() in C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php:633
+Stack trace:
+#0 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php(1161): kwetupizza_render_whatsapp_webhook_helper()
+#1 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\kwetu-pizza-plugin.php(32): require_once('C:\\Users\\yusuf\\...')
+#2 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-settings.php(545): include_once('C:\\Users\\yusuf\\...')
+#3 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-config.php(104): require_once('C:\\Users\\yusuf\\...')
+#4 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-load.php(50): require_once('C:\\Users\\yusuf\\...')
+#5 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\admin.php(35): require_once('C:\\Users\\yusuf\\...')
+#6 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\plugins.php(10): require_once('C:\\Users\\yusuf\\...')
+#7 {main}
+  thrown
+Context: {
+    "file": "C:\\Users\\yusuf\\Local Sites\\plugidev\\app\\public\\wp-content\\plugins\\kwetu-pizza-plugin-with-notification dec 25\\includes\\whatsapp-handler.php",
+    "line": 633,
+    "error_type": 1
+}
+Trace: 
+  1. kwetu_logger_shutdown_handler()
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:17] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:18] [ERROR] Fatal Error: Uncaught Error: Call to undefined function wp_create_nonce() in C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php:633
+Stack trace:
+#0 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php(1161): kwetupizza_render_whatsapp_webhook_helper()
+#1 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\kwetu-pizza-plugin.php(32): require_once('C:\\Users\\yusuf\\...')
+#2 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-settings.php(545): include_once('C:\\Users\\yusuf\\...')
+#3 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-config.php(104): require_once('C:\\Users\\yusuf\\...')
+#4 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-load.php(50): require_once('C:\\Users\\yusuf\\...')
+#5 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\admin.php(35): require_once('C:\\Users\\yusuf\\...')
+#6 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\plugins.php(10): require_once('C:\\Users\\yusuf\\...')
+#7 {main}
+  thrown
+Context: {
+    "file": "C:\\Users\\yusuf\\Local Sites\\plugidev\\app\\public\\wp-content\\plugins\\kwetu-pizza-plugin-with-notification dec 25\\includes\\whatsapp-handler.php",
+    "line": 633,
+    "error_type": 1
+}
+Trace: 
+  1. kwetu_logger_shutdown_handler()
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:21] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:23] [ERROR] Fatal Error: Uncaught Error: Call to undefined function wp_create_nonce() in C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php:633
+Stack trace:
+#0 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php(1161): kwetupizza_render_whatsapp_webhook_helper()
+#1 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\kwetu-pizza-plugin.php(32): require_once('C:\\Users\\yusuf\\...')
+#2 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-settings.php(545): include_once('C:\\Users\\yusuf\\...')
+#3 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-config.php(104): require_once('C:\\Users\\yusuf\\...')
+#4 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-load.php(50): require_once('C:\\Users\\yusuf\\...')
+#5 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-blog-header.php(13): require_once('C:\\Users\\yusuf\\...')
+#6 C:\Users\yusuf\Local Sites\plugidev\app\public\index.php(17): require('C:\\Users\\yusuf\\...')
+#7 {main}
+  thrown
+Context: {
+    "file": "C:\\Users\\yusuf\\Local Sites\\plugidev\\app\\public\\wp-content\\plugins\\kwetu-pizza-plugin-with-notification dec 25\\includes\\whatsapp-handler.php",
+    "line": 633,
+    "error_type": 1
+}
+Trace: 
+  1. kwetu_logger_shutdown_handler()
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:52] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:54] [ERROR] Fatal Error: Uncaught Error: Call to undefined function wp_create_nonce() in C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php:633
+Stack trace:
+#0 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php(1161): kwetupizza_render_whatsapp_webhook_helper()
+#1 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\kwetu-pizza-plugin.php(32): require_once('C:\\Users\\yusuf\\...')
+#2 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-settings.php(545): include_once('C:\\Users\\yusuf\\...')
+#3 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-config.php(104): require_once('C:\\Users\\yusuf\\...')
+#4 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-load.php(50): require_once('C:\\Users\\yusuf\\...')
+#5 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\admin.php(35): require_once('C:\\Users\\yusuf\\...')
+#6 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\index.php(10): require_once('C:\\Users\\yusuf\\...')
+#7 {main}
+  thrown
+Context: {
+    "file": "C:\\Users\\yusuf\\Local Sites\\plugidev\\app\\public\\wp-content\\plugins\\kwetu-pizza-plugin-with-notification dec 25\\includes\\whatsapp-handler.php",
+    "line": 633,
+    "error_type": 1
+}
+Trace: 
+  1. kwetu_logger_shutdown_handler()
+--------------------------------------------------------------------------------
+[2025-04-27 12:25:58] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:26:00] [ERROR] Fatal Error: Uncaught Error: Call to undefined function wp_create_nonce() in C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php:633
+Stack trace:
+#0 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php(1161): kwetupizza_render_whatsapp_webhook_helper()
+#1 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\kwetu-pizza-plugin.php(32): require_once('C:\\Users\\yusuf\\...')
+#2 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-settings.php(545): include_once('C:\\Users\\yusuf\\...')
+#3 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-config.php(104): require_once('C:\\Users\\yusuf\\...')
+#4 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-load.php(50): require_once('C:\\Users\\yusuf\\...')
+#5 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-blog-header.php(13): require_once('C:\\Users\\yusuf\\...')
+#6 C:\Users\yusuf\Local Sites\plugidev\app\public\index.php(17): require('C:\\Users\\yusuf\\...')
+#7 {main}
+  thrown
+Context: {
+    "file": "C:\\Users\\yusuf\\Local Sites\\plugidev\\app\\public\\wp-content\\plugins\\kwetu-pizza-plugin-with-notification dec 25\\includes\\whatsapp-handler.php",
+    "line": 633,
+    "error_type": 1
+}
+Trace: 
+  1. kwetu_logger_shutdown_handler()
+--------------------------------------------------------------------------------
+[2025-04-27 12:26:02] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:26:04] [ERROR] Fatal Error: Uncaught Error: Call to undefined function wp_create_nonce() in C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php:633
+Stack trace:
+#0 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php(1161): kwetupizza_render_whatsapp_webhook_helper()
+#1 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\kwetu-pizza-plugin.php(32): require_once('C:\\Users\\yusuf\\...')
+#2 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-settings.php(545): include_once('C:\\Users\\yusuf\\...')
+#3 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-config.php(104): require_once('C:\\Users\\yusuf\\...')
+#4 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-load.php(50): require_once('C:\\Users\\yusuf\\...')
+#5 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\admin.php(35): require_once('C:\\Users\\yusuf\\...')
+#6 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-admin\plugins.php(10): require_once('C:\\Users\\yusuf\\...')
+#7 {main}
+  thrown
+Context: {
+    "file": "C:\\Users\\yusuf\\Local Sites\\plugidev\\app\\public\\wp-content\\plugins\\kwetu-pizza-plugin-with-notification dec 25\\includes\\whatsapp-handler.php",
+    "line": 633,
+    "error_type": 1
+}
+Trace: 
+  1. kwetu_logger_shutdown_handler()
+--------------------------------------------------------------------------------
+[2025-04-27 12:26:09] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:26:10] [ERROR] Fatal Error: Uncaught Error: Call to undefined function wp_create_nonce() in C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php:633
+Stack trace:
+#0 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\includes\whatsapp-handler.php(1161): kwetupizza_render_whatsapp_webhook_helper()
+#1 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-content\plugins\kwetu-pizza-plugin-with-notification dec 25\kwetu-pizza-plugin.php(32): require_once('C:\\Users\\yusuf\\...')
+#2 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-settings.php(545): include_once('C:\\Users\\yusuf\\...')
+#3 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-config.php(104): require_once('C:\\Users\\yusuf\\...')
+#4 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-load.php(50): require_once('C:\\Users\\yusuf\\...')
+#5 C:\Users\yusuf\Local Sites\plugidev\app\public\wp-blog-header.php(13): require_once('C:\\Users\\yusuf\\...')
+#6 C:\Users\yusuf\Local Sites\plugidev\app\public\index.php(17): require('C:\\Users\\yusuf\\...')
+#7 {main}
+  thrown
+Context: {
+    "file": "C:\\Users\\yusuf\\Local Sites\\plugidev\\app\\public\\wp-content\\plugins\\kwetu-pizza-plugin-with-notification dec 25\\includes\\whatsapp-handler.php",
+    "line": 633,
+    "error_type": 1
+}
+Trace: 
+  1. kwetu_logger_shutdown_handler()
+--------------------------------------------------------------------------------
+[2025-04-27 12:34:52] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:35:02] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:35:07] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:35:13] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:35:18] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:35:22] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:35:28] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:35:32] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:36:37] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:37:37] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:38:38] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:40:39] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:42:40] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:44:41] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:46:42] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
+[2025-04-27 12:46:44] [EVENT] Plugin initialization started
+Context: {
+    "event_type": "plugin_init",
+    "data": []
+}
+--------------------------------------------------------------------------------
