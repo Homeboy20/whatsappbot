@@ -2063,7 +2063,7 @@ function kwetupizza_send_list_message($phone_number, $message, $button_text, $se
 }
 
 /**
- * Send a help message to the user and create a support ticket
+ * Send a help message with support options
  * 
  * @param string $phone The user's phone number
  * @return bool Whether the message was sent successfully
@@ -2080,29 +2080,51 @@ function kwetupizza_send_help_message($phone) {
     $message = "👋 Hi there! I've created a support ticket for you (#{$ticket_id}).\n\n";
     $message .= "What kind of help do you need today?";
     
-    // Send the message with interactive buttons
-    $sent = kwetupizza_send_interactive_message($phone, $message, [
+    // Instead of buttons, use a list message
+    $sections = [
         [
-            'id' => 'help_order',
-            'title' => '🛒 Order Help'
+            'title' => '🛒 Order & Payment',
+            'rows' => [
+                [
+                    'id' => 'help_order',
+                    'title' => 'Order Help',
+                    'description' => 'Issues with placing an order'
+                ],
+                [
+                    'id' => 'help_payment',
+                    'title' => 'Payment Issues',
+                    'description' => 'Problems with payments'
+                ]
+            ]
         ],
         [
-            'id' => 'help_menu',
-            'title' => '📋 Menu Questions'
+            'title' => '📋 Menu & Delivery',
+            'rows' => [
+                [
+                    'id' => 'help_menu',
+                    'title' => 'Menu Questions',
+                    'description' => 'Questions about our menu'
+                ],
+                [
+                    'id' => 'help_delivery',
+                    'title' => 'Delivery Help',
+                    'description' => 'Issues with your delivery'
+                ]
+            ]
         ],
         [
-            'id' => 'help_delivery',
-            'title' => '🚚 Delivery Help'
-        ],
-        [
-            'id' => 'help_payment',
-            'title' => '💳 Payment Issues'
-        ],
-        [
-            'id' => 'help_agent',
-            'title' => '👨‍💼 Talk to Agent'
+            'title' => '👨‍💼 Live Support',
+            'rows' => [
+                [
+                    'id' => 'help_agent',
+                    'title' => 'Talk to Agent',
+                    'description' => 'Connect with a human agent'
+                ]
+            ]
         ]
-    ]);
+    ];
+    
+    $sent = kwetupizza_send_list_message($phone, $message, 'Help Options', $sections);
     
     // Update the user's context
     $context = kwetupizza_get_conversation_context($phone);
@@ -2411,6 +2433,302 @@ function kwetupizza_handle_main_menu_selection($phone, $selection) {
         default:
             return kwetupizza_send_default_message($phone);
     }
+}
+
+/**
+ * Show the interactive menu with all categories
+ * 
+ * @param string $phone The user's phone number
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_show_interactive_menu($phone) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'kwetupizza_products';
+    
+    // Get categories
+    $categories = $wpdb->get_col("SELECT DISTINCT category FROM $table_name WHERE is_available = 1 ORDER BY category");
+    
+    if (empty($categories)) {
+        $message = "I'm sorry, but our menu is currently unavailable. Please try again later.";
+        return kwetupizza_send_whatsapp_message($phone, $message);
+    }
+    
+    // Prepare the menu message
+    $menu_message = "🍕 *Our Menu* 🍕\n\n";
+    $menu_message .= "Choose a category to see menu items:";
+    
+    // Prepare the sections
+    $sections = [];
+    foreach ($categories as $category) {
+        $emoji = kwetupizza_get_category_emoji($category);
+        $items = $wpdb->get_col($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table_name WHERE category = %s AND is_available = 1",
+            $category
+        ));
+        $item_count = !empty($items) ? $items[0] : 0;
+        
+        $sections[] = [
+            'title' => "$emoji $category",
+            'rows' => [
+                [
+                    'id' => 'category_' . strtolower($category),
+                    'title' => $category,
+                    'description' => "$item_count items available"
+                ]
+            ]
+        ];
+    }
+    
+    // Add a "Main Menu" option
+    $sections[] = [
+        'title' => '⬅️ Back',
+        'rows' => [
+            [
+                'id' => 'back_to_main',
+                'title' => 'Back to Main Menu',
+                'description' => 'Return to the main options'
+            ]
+        ]
+    ];
+    
+    // Send the list message
+    $result = kwetupizza_send_list_message($phone, $menu_message, 'View Categories', $sections);
+    
+    // Update user context
+    $context = kwetupizza_get_conversation_context($phone);
+    $context['awaiting'] = 'category_selection';
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    return $result;
+}
+
+/**
+ * Show the pizza menu items
+ * 
+ * @param string $phone The user's phone number
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_show_pizza_menu($phone) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'kwetupizza_products';
+    
+    // Get pizza items
+    $pizzas = $wpdb->get_results(
+        "SELECT id, product_name, price, description FROM $table_name 
+         WHERE category = 'Pizza' AND is_available = 1 
+         ORDER BY price"
+    );
+    
+    if (empty($pizzas)) {
+        $message = "I'm sorry, but we don't have any pizzas available at the moment. Please check back later.";
+        return kwetupizza_send_whatsapp_message($phone, $message);
+    }
+    
+    // Prepare the message
+    $message = "🍕 *Our Pizza Menu* 🍕\n\n";
+    $message .= "Please select a pizza to order:";
+    
+    // Prepare the pizza rows
+    $rows = [];
+    foreach ($pizzas as $pizza) {
+        $price_formatted = number_format($pizza->price, 2) . ' TZS';
+        $description = !empty($pizza->description) ? substr($pizza->description, 0, 60) : $price_formatted;
+        
+        $rows[] = [
+            'id' => 'product_' . $pizza->id,
+            'title' => $pizza->product_name,
+            'description' => $description . ' - ' . $price_formatted
+        ];
+    }
+    
+    // Split into sections if needed (WhatsApp has limits)
+    $sections = [];
+    $section_size = 10; // Maximum rows per section
+    
+    for ($i = 0; $i < count($rows); $i += $section_size) {
+        $section_rows = array_slice($rows, $i, $section_size);
+        $sections[] = [
+            'title' => 'Pizza Options ' . (($i / $section_size) + 1),
+            'rows' => $section_rows
+        ];
+    }
+    
+    // Add a "Back" option
+    $sections[] = [
+        'title' => '⬅️ Back',
+        'rows' => [
+            [
+                'id' => 'back_to_menu',
+                'title' => 'Back to Menu',
+                'description' => 'View other categories'
+            ],
+            [
+                'id' => 'back_to_main',
+                'title' => 'Back to Main Menu',
+                'description' => 'Return to the main options'
+            ]
+        ]
+    ];
+    
+    // Send the list message
+    $result = kwetupizza_send_list_message($phone, $message, 'Select Pizza', $sections);
+    
+    // Update user context
+    $context = kwetupizza_get_conversation_context($phone);
+    $context['awaiting'] = 'product_selection';
+    $context['category'] = 'Pizza';
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    return $result;
+}
+
+/**
+ * Show the sides menu items
+ * 
+ * @param string $phone The user's phone number
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_show_sides_menu($phone) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'kwetupizza_products';
+    
+    // Get sides items (assuming sides categories could be 'Sides', 'Appetizers', etc.)
+    $sides = $wpdb->get_results(
+        "SELECT id, product_name, price, description, category FROM $table_name 
+         WHERE (category = 'Sides' OR category = 'Appetizers') AND is_available = 1 
+         ORDER BY category, price"
+    );
+    
+    if (empty($sides)) {
+        $message = "I'm sorry, but we don't have any sides available at the moment. Please check back later.";
+        return kwetupizza_send_whatsapp_message($phone, $message);
+    }
+    
+    // Prepare the message
+    $message = "🍟 *Our Sides Menu* 🍟\n\n";
+    $message .= "Please select a side to order:";
+    
+    // Group by category
+    $sides_by_category = [];
+    foreach ($sides as $side) {
+        if (!isset($sides_by_category[$side->category])) {
+            $sides_by_category[$side->category] = [];
+        }
+        $sides_by_category[$side->category][] = $side;
+    }
+    
+    // Prepare the sections
+    $sections = [];
+    foreach ($sides_by_category as $category => $items) {
+        $rows = [];
+        foreach ($items as $item) {
+            $price_formatted = number_format($item->price, 2) . ' TZS';
+            $description = !empty($item->description) ? substr($item->description, 0, 60) : $price_formatted;
+            
+            $rows[] = [
+                'id' => 'product_' . $item->id,
+                'title' => $item->product_name,
+                'description' => $description . ' - ' . $price_formatted
+            ];
+        }
+        
+        $sections[] = [
+            'title' => kwetupizza_get_category_emoji($category) . ' ' . $category,
+            'rows' => $rows
+        ];
+    }
+    
+    // Add a "Back" option
+    $sections[] = [
+        'title' => '⬅️ Back',
+        'rows' => [
+            [
+                'id' => 'back_to_menu',
+                'title' => 'Back to Menu',
+                'description' => 'View other categories'
+            ],
+            [
+                'id' => 'back_to_main',
+                'title' => 'Back to Main Menu',
+                'description' => 'Return to the main options'
+            ]
+        ]
+    ];
+    
+    // Send the list message
+    $result = kwetupizza_send_list_message($phone, $message, 'Select Side', $sections);
+    
+    // Update user context
+    $context = kwetupizza_get_conversation_context($phone);
+    $context['awaiting'] = 'product_selection';
+    $context['category'] = 'Sides';
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    return $result;
+}
+
+/**
+ * Show the user's recent orders
+ * 
+ * @param string $phone The user's phone number
+ * @return bool Whether the message was sent successfully
+ */
+function kwetupizza_show_recent_orders($phone) {
+    global $wpdb;
+    $orders_table = $wpdb->prefix . 'kwetupizza_orders';
+    
+    // Get recent orders for this phone number
+    $recent_orders = $wpdb->get_results($wpdb->prepare(
+        "SELECT id, total, status, payment_status, order_date 
+         FROM $orders_table 
+         WHERE customer_phone = %s 
+         ORDER BY order_date DESC 
+         LIMIT 5",
+        $phone
+    ));
+    
+    if (empty($recent_orders)) {
+        $message = "You don't have any recent orders. Would you like to place an order now?";
+        
+        // Send with buttons for easy navigation
+        return kwetupizza_send_interactive_message($phone, $message, [
+            [
+                'id' => 'view_menu',
+                'title' => '📋 View Menu'
+            ],
+            [
+                'id' => 'back_to_main',
+                'title' => '⬅️ Back to Main'
+            ]
+        ]);
+    }
+    
+    // Format the message with recent orders
+    $message = "📜 *Your Recent Orders* 📜\n\n";
+    
+    foreach ($recent_orders as $index => $order) {
+        $order_date = date_i18n('M j, Y g:i a', strtotime($order->order_date));
+        $order_status = ucfirst($order->status);
+        $payment_status = ucfirst($order->payment_status);
+        
+        $message .= "*Order #" . $order->id . "*\n";
+        $message .= "Date: " . $order_date . "\n";
+        $message .= "Amount: " . number_format($order->total, 2) . " TZS\n";
+        $message .= "Status: " . $order_status . "\n";
+        $message .= "Payment: " . $payment_status . "\n\n";
+    }
+    
+    $message .= "To track a specific order, reply with 'track' followed by the order number (e.g., 'track 123').";
+    
+    // Send the message
+    $result = kwetupizza_send_whatsapp_message($phone, $message);
+    
+    // Update user context
+    $context = kwetupizza_get_conversation_context($phone);
+    $context['awaiting'] = 'track_order_response';
+    kwetupizza_set_conversation_context($phone, $context);
+    
+    return $result;
 }
 
 ?>
